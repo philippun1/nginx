@@ -15,6 +15,10 @@
 
 typedef struct {
     ngx_uint_t  engine;   /* unsigned  engine:1; */
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+    ngx_uint_t  provider;               /* unsigned  provider:1; */
+    ngx_uint_t  provider_search_path;   /* unsigned  provider_search_path:1; */
+#endif
 } ngx_openssl_conf_t;
 
 
@@ -90,6 +94,10 @@ static time_t ngx_ssl_parse_time(
 
 static void *ngx_openssl_create_conf(ngx_cycle_t *cycle);
 static char *ngx_openssl_engine(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+static char *ngx_openssl_provider(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *ngx_openssl_provider_search_path(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+#endif
 static void ngx_openssl_exit(ngx_cycle_t *cycle);
 
 
@@ -101,6 +109,22 @@ static ngx_command_t  ngx_openssl_commands[] = {
       0,
       0,
       NULL },
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+    { ngx_string("ssl_provider"),
+      NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE12,
+      ngx_openssl_provider,
+      0,
+      0,
+      NULL },
+
+    { ngx_string("ssl_provider_search_path"),
+      NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE1,
+      ngx_openssl_provider_search_path,
+      0,
+      0,
+      NULL },
+#endif
 
       ngx_null_command
 };
@@ -6007,6 +6031,90 @@ ngx_openssl_engine(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
 #endif
 }
+
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+static char *
+ngx_openssl_provider(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+#ifndef OPENSSL_NO_PROVIDER
+
+    ngx_openssl_conf_t *oscf = conf;
+
+    OSSL_PROVIDER *provider = NULL;
+    OSSL_PROVIDER *provider2 = NULL;
+    ngx_str_t     *value;
+
+    if (oscf->provider) {
+        return "is duplicate";
+    }
+
+    oscf->provider = 1;
+
+    value = cf->args->elts;
+
+    provider = OSSL_PROVIDER_load(NULL, (char *) value[1].data);
+
+    if (provider == NULL) {
+        ngx_ssl_error(NGX_LOG_EMERG, cf->log, 0,
+                      "OSSL_PROVIDER_load(\"%V\") failed", &value[1]);
+        return NGX_CONF_ERROR;
+    }
+
+    if (cf->args->nelts > 2) {
+        provider2 = OSSL_PROVIDER_load(NULL, (char *) value[2].data);
+
+        if (provider2 == NULL) {
+            ngx_ssl_error(NGX_LOG_EMERG, cf->log, 0,
+                        "OSSL_PROVIDER_load(\"%V\") failed", &value[2]);
+            return NGX_CONF_ERROR;
+        }
+    }
+
+    return NGX_CONF_OK;
+
+#else
+
+    return "is not supported";
+
+#endif
+}
+
+
+static char *
+ngx_openssl_provider_search_path(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+#ifndef OPENSSL_NO_PROVIDER
+
+    ngx_openssl_conf_t *oscf = conf;
+
+    ngx_str_t     *value;
+
+    if (oscf->provider_search_path) {
+        return "is duplicate";
+    }
+
+    oscf->provider_search_path = 1;
+
+    value = cf->args->elts;
+
+    int success = OSSL_PROVIDER_set_default_search_path(NULL, (char *) value[1].data);
+
+    if (success != 1) {
+        ngx_ssl_error(NGX_LOG_EMERG, cf->log, 0,
+                      "OSSL_PROVIDER_set_default_search_path(\"%V\") failed", &value[1]);
+        return NGX_CONF_ERROR;
+    }
+
+    return NGX_CONF_OK;
+
+#else
+
+    return "is not supported";
+
+#endif
+}
+#endif
 
 
 static void
