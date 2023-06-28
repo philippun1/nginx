@@ -23,6 +23,9 @@
 #ifndef OPENSSL_NO_ENGINE
 #include <openssl/engine.h>
 #endif
+#ifndef OPENSSL_NO_PROVIDER
+#include <openssl/provider.h>
+#endif
 #include <openssl/evp.h>
 #if (NGX_QUIC)
 #ifdef OPENSSL_IS_BORINGSSL
